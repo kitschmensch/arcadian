@@ -1,9 +1,9 @@
 from __future__ import annotations
 from django.db import models
 import uuid
-import decimal
+from decimal import Decimal
 from datetime import datetime
-from django.db import models
+from django.db import models, transaction
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.conf import settings
@@ -15,6 +15,10 @@ class Tenant(models.Model):
     id = models.BigAutoField(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    @property
+    def total(self):
+        return Transaction.objects.all().aggregate(models.Sum("amount"))["amount__sum"]
 
 
 @receiver(post_save, sender=Tenant)
@@ -45,19 +49,17 @@ class TenantUser(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     users_default_tenant = models.BooleanField(default=False)
 
+    def save(self, *args, **kwargs):
+        if not self.users_default_tenant:
+            return super(TenantUser, self).save(*args, **kwargs)
+        with transaction.atomic():
+            TenantUser.objects.filter(users_default_tenant=True).update(
+                users_default_tenant=False
+            )
+            return super(TenantUser, self).save(*args, **kwargs)
 
-@receiver(pre_save, sender=TenantUser)
-def ensure_one_default_tenant(instance, **kwargs):
-    if instance.users_default_tenant:
-        old_default = TenantUser.objects.filter(users_default_tenant=True).first()
-        if instance == old_default:
-            pass
-        else:
-            old_default(users_default_tenant=False)
-            old_default.save()
-    else:
-        if TenantUser.objects.filter(users_default_tenant=True).count() == 1:
-            raise SystemError("There must be one default tenant per user.")
+    class Meta:
+        unique_together = (("tenant", "user"),)
 
 
 class Stack(TenantModel):
@@ -65,43 +67,55 @@ class Stack(TenantModel):
     name = models.CharField(max_length=255)
     emoji = models.CharField(max_length=31, blank=True, null=True)
     isPile = models.BooleanField(default=False, editable=False)
+    goal = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     @property
-    def total(self):
-        """Sum all transactions for this stack."""
-        with tenant_context(self.tenant):
-            return Transaction.objects.filter(stack=self).aggregate(
-                models.Sum("amount")
-            )["amount__sum"]
+    def total(
+        self,
+        datefrom: datetime = datetime(1900, 1, 1),
+        dateto: datetime = datetime.now(),
+    ):
+        total = Transaction.objects.filter(stack=self, split=False).aggregate(
+            models.Sum("amount")
+        )["amount__sum"]
+        return "%.2f" % Decimal(total)
 
-    def transfer_to(self, stack: Stack, amount: decimal.Decimal):
+    def save(self, *args, **kwargs):
+        pile = Stack.objects.filter(isPile=True).first()
+        if (
+            self.isPile
+            and self != pile
+            and Stack.objects.filter(isPile=True).count() > 0
+        ):
+            raise SystemError("There can only be one pile per tenant.")
+
+        if self == pile:
+            self.isPile = True
+        return super(Stack, self).save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.isPile:
+            raise SystemError("You cannot delete the pile.")
+        return super(Stack, self).delete(*args, **kwargs)
+
+    def transfer_to(self, stack: Stack, amount: Decimal):
         """Transfer money from this stack to another stack. Generates two transactions."""
-        with tenant_context(self.tenant):
-            source = Transaction(
-                date=datetime.now(),
-                amount=amount * -1,
-                description=f"Transfer From {self.name}",
-                transfer=True,
-                stack=self,
-            )
-            destination = Transaction(
-                date=datetime.now(),
-                amount=amount,
-                description=f"Transfer to {stack.name}",
-                transfer=True,
-                stack=stack,
-            )
-            source.save()
-            destination.save()
-
-
-@receiver(pre_save, sender=Stack)
-def ensure_one_pile_per_tenant(instance, **kwargs):
-    """Ensure that there is only one pile per tenant."""
-    if instance.isPile:
-        with tenant_context(instance.tenant):
-            if Stack.objects.filter(isPile=True).count() > 0:
-                raise SystemError("There can only be one pile per tenant.")
+        source = Transaction(
+            date=datetime.now(),
+            amount=amount * -1,
+            description=f"Transfer from {self.name}",
+            transfer=True,
+            stack=self,
+        )
+        destination = Transaction(
+            date=datetime.now(),
+            amount=amount,
+            description=f"Transfer to {stack.name}",
+            transfer=True,
+            stack=stack,
+        )
+        source.save()
+        destination.save()
 
 
 class Transaction(TenantModel):
@@ -110,15 +124,16 @@ class Transaction(TenantModel):
     description = models.CharField(max_length=255)
     stack = models.ForeignKey(Stack, on_delete=models.SET_NULL, null=True)
     transfer = models.BooleanField(default=False)
+    split = models.BooleanField(default=False)
+    split_from = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True
+    )
 
     class Meta:
-        unique_together = (("date", "amount", "description", "tenant"),)
         indexes = [models.Index(fields=["date", "amount", "description"])]
         ordering = ["-date"]
 
-
-@receiver(pre_save, sender=Transaction)
-def get_pile(sender, instance, **kwargs):
-    if instance.stack is None:
-        with tenant_context(instance.tenant):
-            instance.stack = Stack.objects.get(isPile=True)
+    def save(self, *args, **kwargs):
+        if self.stack is None:
+            self.stack = Stack.objects.get(isPile=True)
+        return super(Transaction, self).save(*args, **kwargs)

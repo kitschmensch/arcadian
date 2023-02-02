@@ -1,5 +1,10 @@
 from rest_framework import generics, permissions, authentication
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
+from rest_framework import filters
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django_filters.rest_framework import DjangoFilterBackend
 from .models import Tenant, Stack, Transaction, TenantUser
 from .serializers import (
     TenantSerializer,
@@ -7,6 +12,12 @@ from .serializers import (
     StackSerializer,
     TransactionSerializer,
 )
+
+
+class StandardResultsSetPagination(LimitOffsetPagination):
+    page_size = 100
+    page_size_query_param = "page_size"
+    max_page_size = 1000
 
 
 class TenantListCreateAPIView(generics.ListCreateAPIView):
@@ -25,11 +36,28 @@ class TenantListCreateAPIView(generics.ListCreateAPIView):
         serializer.save(creator=self.request.user)
 
 
-class TenantUserListCreateAPIView(generics.ListCreateAPIView):
+class TenantAPIView(generics.RetrieveAPIView):
+    queryset = Tenant.objects.all()
+    serializer_class = TenantSerializer
+    authentication_classes = [authentication.SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "id"
+
+
+class TenantUserListAPIView(generics.ListAPIView):
     serializer_class = TenantUserSerializer
     authentication_classes = [authentication.SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated]
-    depth = 1
+
+    def get_queryset(self):
+        return TenantUser.objects.filter(user=self.request.user)
+
+
+class TenantUserRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = TenantUserSerializer
+    authentication_classes = [authentication.SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "tenant_id"
 
     def get_queryset(self):
         return TenantUser.objects.filter(user=self.request.user)
@@ -42,11 +70,38 @@ class StackListCreateAPIView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
+class StackDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Stack.objects.all()
+    serializer_class = StackSerializer
+    authentication_classes = [authentication.SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+
+@api_view(["GET", "POST"])
+def StackTransfer(request, frm, to):
+    amount = request.data.get("amount", None)
+    if amount is not None:
+        from_stack = Stack.objects.get(id=frm)
+        to_stack = Stack.objects.get(id=to)
+        from_stack.transfer_to(stack=to_stack, amount=amount)
+    return Response({frm: frm, to: to})
+
+
 class TransactionListCreateAPIView(generics.ListCreateAPIView):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
     authentication_classes = [authentication.SessionAuthentication]
-    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = {
+        "date": ["gte", "lte"],
+        "amount": ["gte", "lte"],
+    }
+    search_fields = ["description"]
 
-    def perform_create(self, serializer):
-        serializer.save(tenant=self.request.user)
+
+class TransactionDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Transaction.objects.all()
+    serializer_class = TransactionSerializer
+    authentication_classes = [authentication.SessionAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
