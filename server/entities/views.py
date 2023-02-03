@@ -2,6 +2,7 @@ from rest_framework import generics, permissions, authentication
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.response import Response
 from rest_framework import filters
+from typing import TypedDict
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -80,11 +81,10 @@ class StackDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 @api_view(["GET", "POST"])
 def StackTransfer(request, frm, to):
     amount = request.data.get("amount", None)
-    if amount is not None:
-        from_stack = Stack.objects.get(id=frm)
-        to_stack = Stack.objects.get(id=to)
-        from_stack.transfer_to(stack=to_stack, amount=amount)
-    return Response({frm: frm, to: to})
+    from_stack = Stack.objects.get(id=frm)
+    to_stack = Stack.objects.get(id=to)
+    response = from_stack.transfer_to(stack=to_stack, amount=amount)
+    return Response(response)
 
 
 class TransactionListCreateAPIView(generics.ListCreateAPIView):
@@ -96,6 +96,7 @@ class TransactionListCreateAPIView(generics.ListCreateAPIView):
     filterset_fields = {
         "date": ["gte", "lte"],
         "amount": ["gte", "lte"],
+        "stack__id": ["exact"],
     }
     search_fields = ["description"]
 
@@ -105,3 +106,22 @@ class TransactionDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TransactionSerializer
     authentication_classes = [authentication.SessionAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+
+
+@api_view(["POST"])
+def split_transaction(request, id):
+    stack_amounts = request.data
+    stack = Stack.objects.get(id=id)
+    processed_stack_amounts = {}
+    for key, value in stack_amounts.items():
+        stack = Stack.objects.get(id=key)
+        processed_stack_amounts.update({stack: value})
+    response = stack.split(processed_stack_amounts)
+    return Response(response)
+
+
+@api_view(["POST"])
+def recombine_transaction(request, id):
+    stack = Stack.objects.get(id=id)
+    response = stack.recombine()
+    return Response(response)

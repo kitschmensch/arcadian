@@ -10,6 +10,8 @@ from entities.views import (
     StackTransfer,
     TransactionListCreateAPIView,
     TransactionDetailAPIView,
+    split_transaction,
+    recombine_transaction,
 )
 
 urlpatterns = [
@@ -27,5 +29,11 @@ urlpatterns = [
         "transactions/<int:pk>/",
         TransactionDetailAPIView.as_view(),
         name="Transaction",
+    ),
+    path("transactions/<int:id>/split", split_transaction, name="Split Transaction"),
+    path(
+        "transactions/<int:id>/recombine",
+        recombine_transaction,
+        name="Recombine Transaction",
     ),
 ]
