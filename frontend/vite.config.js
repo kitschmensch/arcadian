@@ -12,7 +12,7 @@ export default defineConfig({
   },
   plugins: [
     svelte(),
-    liveReload('../server/home/static')
+    liveReload('../home/static')
   ],
 
 })

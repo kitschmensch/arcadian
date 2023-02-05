@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     "easy_tenants",
     "rest_framework",
     "entities",
-    "api",
     "home",
 ]
 
@@ -49,6 +48,7 @@ FAKER_PROVIDERS = None  # faker.DEFAULT_PROVIDERS is loaded (all)
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -57,6 +57,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "home.tenant_middleware.TenantMiddleware",
 ]
+
 
 ROOT_URLCONF = "home.urls"
 
@@ -143,14 +144,13 @@ VITE_APP_DIR = BASE_DIR / "frontend"
 
 
 STATIC_URL = "/static/"
-STATICFILES_DIRS = [
-    VITE_APP_DIR / "dist",
-]
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_URL = "/static/"
+STATICFILES_DIRS = (BASE_DIR / "home/static",)
 
-CORS_ORIGIN_WHITELIST = ["http://localhost:5173"]
 
 INTERNAL_IPS = ["127.0.0.1"]
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
