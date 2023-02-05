@@ -1,0 +1,21 @@
+{
+  "index.css": {
+    "file": "assets/index-9ea02431.css",
+    "src": "index.css"
+  },
+  "index.html": {
+    "assets": [
+      "assets/svelte-a39f39b7.svg"
+    ],
+    "css": [
+      "assets/index-9ea02431.css"
+    ],
+    "file": "assets/index-c88b134a.js",
+    "isEntry": true,
+    "src": "index.html"
+  },
+  "src/assets/svelte.svg": {
+    "file": "assets/svelte-a39f39b7.svg",
+    "src": "src/assets/svelte.svg"
+  }
+}
