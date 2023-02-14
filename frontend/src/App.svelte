@@ -1,47 +1,38 @@
 <script>
-  import Counter from "./lib/Counter.svelte";
+  import "./lib/TransactionTable.svelte";
+  import StackList from "./lib/StackList.svelte";
+  import SidePanel from "./lib/SidePanel.svelte";
+  import Header from "./lib/Header.svelte";
+  import Main from "./lib/Main.svelte";
+  import "carbon-components-svelte/css/all.css";
 </script>
 
-<main>
-  <div>
-    <a href="https://vitejs.dev" target="_blank" rel="noreferrer">
-      <img src="/static/vite.svg" class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src="/static/svelte.svg" class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
-
-  <div class="card">
-    <Counter />
-  </div>
-
-  <p>
-    Check out <a
-      href="https://github.com/sveltejs/kit#readme"
-      target="_blank"
-      rel="noreferrer">SvelteKit</a
-    >, the official Svelte app framework powered by Vite!
-  </p>
-
-  <p class="read-the-docs">Click on the Vite and Svelte logos to learn more</p>
+<main class="parent">
+  <div class="header"><Header /></div>
+  <div class="stacks"><StackList /></div>
+  <div class="main"><Main /></div>
+  <div class="side_panel"><SidePanel /></div>
 </main>
 
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
+  .parent {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: 50px 65px repeat(3, 1fr);
+    grid-column-gap: 5px;
+    grid-row-gap: 5px;
   }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
+
+  .header {
+    grid-area: 1 / 1 / 2 / 6;
   }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
+  .stacks {
+    grid-area: 2 / 1 / 6 / 2;
   }
-  .read-the-docs {
-    color: #888;
+  .main {
+    grid-area: 2 / 2 / 6 / 5;
+  }
+  .side_panel {
+    grid-area: 2 / 5 / 6 / 6;
   }
 </style>

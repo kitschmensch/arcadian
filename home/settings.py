@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "environ",
     "easy_tenants",
     "rest_framework",
+    "rest_framework.authtoken",
     "entities",
     "home",
 ]
@@ -76,7 +77,7 @@ TEMPLATES = [
         },
     },
 ]
-
+APPEND_SLASH = False
 WSGI_APPLICATION = "home.wsgi.application"
 
 

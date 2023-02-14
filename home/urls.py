@@ -9,4 +9,5 @@ urlpatterns = [
     path("accounts/", include("django.contrib.auth.urls")),
     path("api/", include("entities.urls")),
     path("", TemplateView.as_view(template_name="../templates/index.html")),
+    path("upload/", TemplateView.as_view(template_name="../templates/upload.html")),
 ]

@@ -1,5 +1,4 @@
 from __future__ import annotations
-from django.db import models
 import uuid
 from decimal import Decimal
 from datetime import datetime
@@ -69,6 +68,11 @@ class Stack(TenantModel):
     emoji = models.CharField(max_length=31, blank=True, null=True)
     isPile = models.BooleanField(default=False, editable=False)
     goal = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    budget = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    autotransfer = models.DecimalField(
+        max_digits=10, decimal_places=2, blank=True, null=True
+    )
+    position = models.IntegerField(default=0)
 
     @property
     def total(
@@ -84,7 +88,7 @@ class Stack(TenantModel):
         return "%.2f" % Decimal(total)
 
     @transaction.atomic
-    def save(self, *args, **kwargs):
+    def save(self, nested=False, *args, **kwargs):
         pile = Stack.objects.filter(isPile=True).first()
         if (
             self.isPile
@@ -92,13 +96,19 @@ class Stack(TenantModel):
             and Stack.objects.filter(isPile=True).count() > 0
         ):
             raise SystemError("There can only be one pile per tenant.")
+        if not self.pk:
+            if Stack.objects.filter(position=self.position).count() > 0:
+                for stack in Stack.objects.filter(position__gte=self.position):
+                    stack.position += 1
+                    stack.save(nested=True)
 
         if self == pile:
             self.isPile = True
+
         return super(Stack, self).save(*args, **kwargs)
 
     @transaction.atomic
-    def delete(self, *args, **kwargs):
+    def delete(self, nested=False, *args, **kwargs):
         if self.isPile:
             raise SystemError("You cannot delete the pile.")
         if not self.isPile:
@@ -107,6 +117,11 @@ class Stack(TenantModel):
             for transaction in transactions_to_transfer_to_pile:
                 transaction.stack = pile
                 transaction.save()
+        if not nested:
+            for stack in Stack.objects.filter(position__gt=self.position):
+                stack.position -= 1
+                stack.save(nested=True)
+
         return super(Stack, self).delete(*args, **kwargs)
 
     @transaction.atomic
@@ -120,18 +135,21 @@ class Stack(TenantModel):
             raise SystemError("You cannot transfer a negative amount.")
         if amount == 0:
             raise SystemError("You cannot transfer 0 money.")
+        transfer_id = uuid.uuid4()
         source = Transaction(
             date=datetime.now(),
             amount=amount * -1,
-            description=f"Transfer from {self.name}",
+            description=f"Transferred from {self.name} to {stack.name}",
             transfer=True,
+            transfer_id=transfer_id,
             stack=self,
         )
         destination = Transaction(
             date=datetime.now(),
             amount=amount,
-            description=f"Transfer to {stack.name}",
+            description=f"Transferred from {self.name} to {stack.name}",
             transfer=True,
+            transfer_id=transfer_id,
             stack=stack,
         )
         source.save()
@@ -145,6 +163,7 @@ class Transaction(TenantModel):
     description = models.CharField(max_length=255)
     stack = models.ForeignKey(Stack, on_delete=models.SET_NULL, null=True)
     transfer = models.BooleanField(default=False)
+    transfer_id = models.UUIDField(editable=False, null=True)
     split = models.BooleanField(default=False)
     split_from = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True
@@ -161,7 +180,7 @@ class Transaction(TenantModel):
         return super(Transaction, self).save(*args, **kwargs)
 
     @transaction.atomic
-    def split_transaction(self, stack_ammounts: dict[Stack, Decimal]):
+    def split_transaction(self, stack_ammounts: list[int]):
         """Split a transaction into multiple transactions."""
         if self.split:
             raise SystemError("You cannot split a split transaction.")
@@ -171,26 +190,26 @@ class Transaction(TenantModel):
             raise SystemError("You cannot split a split transaction.")
         if len(stack_ammounts) < 2:
             raise ValueError("You must split a transaction into at least two stacks.")
-        if self.amount < 0 and any(amount > 0 for amount in stack_ammounts.values()):
+        if self.amount < 0 and any(amount > 0 for amount in stack_ammounts):
             raise ValueError(
                 "You cannot split a negative transaction into positive amounts."
             )
-        if self.amount > 0 and any(amount < 0 for amount in stack_ammounts.values()):
+        if self.amount > 0 and any(amount < 0 for amount in stack_ammounts):
             raise ValueError(
                 "You cannot split a positive transaction into negative amounts."
             )
-        total = sum(stack_ammounts.values())
+        # this is a fishy rounding error fix
+        total = Decimal(str(sum(stack_ammounts)))
         if total != self.amount:
             raise ValueError(
-                "The total of the split transactions must equal the original transaction amount."
+                f"The total of the split transactions must equal the original transaction amount. {total} =/= {self.amount}"
             )
-        for stack, amount in stack_ammounts.items():
+        for amount in stack_ammounts:
             new_transaction = Transaction(
                 date=self.date,
                 amount=amount,
-                description=self.description,
-                transfer=self.transfer,
-                stack=stack,
+                description=self.description + " (split)",
+                stack=self.stack,
                 split=False,
                 split_from=self,
             )
@@ -200,7 +219,7 @@ class Transaction(TenantModel):
         return [self] + [list(Transaction.objects.filter(split_from=self).all())]
 
     @transaction.atomic
-    def recombine_split(self):
+    def recombine(self):
         """Recombine a split transaction into a single transaction."""
         if not self.split:
             raise SystemError("You cannot recombine a non-split transaction.")
@@ -214,8 +233,13 @@ class Transaction(TenantModel):
     def delete(self, *args, **kwargs):
         if self.split:
             raise SystemError("You cannot delete a split transaction.")
-        if self.transfer:
-            raise SystemError("You cannot delete a transfer transaction.")
+        nested = kwargs.pop("nested", False)
+        if self.transfer and not nested:
+            related_transactions = Transaction.objects.filter(
+                transfer_id=self.transfer_id
+            )
+            for transaction in related_transactions:
+                transaction.delete(nested=True)
         return super(Transaction, self).delete(*args, **kwargs)
 
     def __str__(self):

@@ -1,4 +1,5 @@
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from rest_framework import serializers
 from rest_framework.response import Response
 from .models import Tenant, TenantUser, Stack, Transaction
@@ -12,18 +13,39 @@ class StackSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Stack
-        fields = ("id", "isPile", "name", "goal", "total", "spent", "saved")
-        read_only_fields = ["id", "total"]
+        fields = (
+            "id",
+            "isPile",
+            "name",
+            "goal",
+            "total",
+            "spent",
+            "saved",
+            "budget",
+            "autotransfer",
+            "position",
+        )
+        read_only_fields = [
+            "id",
+            "total",
+            "spent",
+            "saved",
+        ]
 
     def get_spent(self, obj):
         datefrom = self.context["request"].query_params.get("datefrom", None)
         dateto = self.context["request"].query_params.get("dateto", None)
         if datefrom is None:
-            datefrom = datetime(1900, 1, 1)
+            datefrom = datetime.now().replace(day=1)
         if dateto is None:
             dateto = datetime.now()
         spent_total = Transaction.objects.filter(
-            stack=obj, date__gte=datefrom, date__lte=dateto, amount__lt=0, split=False
+            stack=obj,
+            date__gte=datefrom,
+            date__lte=dateto,
+            amount__lt=0,
+            split=False,
+            transfer=False,
         ).aggregate(models.Sum("amount"))["amount__sum"]
         if spent_total is None:
             spent_total = 0
