@@ -59,8 +59,8 @@
   {/each}
   <div class="centered">
     <Button on:click={autoTransfer} kind="secondary" size="small"
-      >Auto Transfer</Button
-    >
+      >Auto Transfer
+    </Button>
   </div>
 </div>
 

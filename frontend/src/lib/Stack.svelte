@@ -29,7 +29,7 @@
       >
         <Currency
           color={stack.total < 0
-            ? "var(--cds-text-error)"
+            ? "var(--cds-support-01)"
             : "var(--cds-text-01)"}
           value={stack.total.toString()}
         />

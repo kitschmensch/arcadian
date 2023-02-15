@@ -104,7 +104,11 @@ class TenantSerializer(serializers.ModelSerializer):
         if dateto is None:
             dateto = datetime.now()
         spent_total = Transaction.objects.filter(
-            date__gte=datefrom, date__lte=dateto, amount__lt=0, split=False
+            date__gte=datefrom,
+            date__lte=dateto,
+            amount__lt=0,
+            split=False,
+            transfer=False,
         ).aggregate(models.Sum("amount"))["amount__sum"]
         if spent_total is None:
             return 0
@@ -119,7 +123,11 @@ class TenantSerializer(serializers.ModelSerializer):
         if dateto is None:
             dateto = datetime.now()
         saved_total = Transaction.objects.filter(
-            date__gte=datefrom, date__lte=dateto, amount__gt=0, split=False
+            date__gte=datefrom,
+            date__lte=dateto,
+            amount__gt=0,
+            split=False,
+            transfer=False,
         ).aggregate(models.Sum("amount"))["amount__sum"]
         if saved_total is None:
             saved_total = 0
